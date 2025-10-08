@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Monitoring Dashboard</title>
+    <style>
+        .critical { background: #ffcccc; }
+        .ok { background: #ccffcc; }
+    </style>
+</head>
+<body>
+    <h1>Active Incidents</h1>
+    <div id="incidents"></div>
+
+    <h1>Latest Metrics</h1>
+    <div id="metrics"></div>
+
+    <script>
+        async function updateData() {
+            const incidents = await fetch('/api/incidents/active/').then(r => r.json());
+            const metrics = await fetch('/api/metrics/latest/').then(r => r.json());
+
+            document.getElementById('incidents').innerHTML = 
+                incidents.map(i => `<p>🚨 ${i.machine}: ${i.type} since ${i.started_at}</p>`).join('');
+
+            document.getElementById('metrics').innerHTML = 
+                metrics.map(m => 
+                    `<div class="${m.status}">🖥️ ${m.machine} | CPU: ${m.cpu}% | MEM: ${m.mem}% | DISK: ${m.disk}%</div>`
+                ).join('');
+        }
+
+        updateData();
+        setInterval(updateData, 10000); // обновление каждые 10 сек
+    </script>
+</body>
+</html>

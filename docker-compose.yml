@@ -1,0 +1,81 @@
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DB}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command: --default-authentication-plugin=mysql_native_password
+    # Добавьте healthcheck
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      start_period: 30s  # даём MySQL время на инициализацию
+
+  redis:
+    image: redis:7-alpine
+
+  web:
+    build: .
+    environment:
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=${DEBUG}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_HOST=${MYSQL_HOST}
+      - DB_NAME=${MYSQL_DB}
+      - DB_USER=${MYSQL_USER}
+      - DB_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_URL=${REDIS_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python create_initial_data.py &&
+             gunicorn --bind 0.0.0.0:8000 monitoring_systems.wsgi:application"
+  celery_worker:
+    build: .
+    environment:
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - SECRET_KEY=${SECRET_KEY}
+      - DB_HOST=${MYSQL_HOST}
+      - DB_NAME=${MYSQL_DB}
+      - DB_USER=${MYSQL_USER}
+      - DB_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_URL=${REDIS_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: celery -A monitoring_systems worker --loglevel=info
+
+  celery_beat:
+    build: .
+    environment:
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - SECRET_KEY=${SECRET_KEY}
+      - DB_HOST=${MYSQL_HOST}
+      - DB_NAME=${MYSQL_DB}
+      - DB_USER=${MYSQL_USER}
+      - DB_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_URL=${REDIS_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: celery -A monitoring_systems beat --loglevel=info
+
+  mock_server:
+    build: .
+    command: python mock_server.py
+    ports:
+      - "8001:8001"
